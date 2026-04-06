@@ -1,0 +1,304 @@
+// ═══════════════════════════════════════════════════════
+//  SOLGYM — Esquema de Base de Datos
+//  ORM: Prisma  |  BD: MySQL
+// ═══════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────────────────────────────────
+//  USUARIOS DEL SISTEMA (admins, entrenadores, recepción)
+// ───────────────────────────────────────────────────────
+model SystemUser {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  email     String   @unique @db.VarChar(150)
+  password  String   @db.VarChar(255)   // bcrypt hash
+  phone     String?  @db.VarChar(20)
+  role      Role     @default(ENTRENADOR)
+  status    Status   @default(ACTIVO)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  receiptsIssued Receipt[]
+
+  @@map("system_users")
+}
+
+enum Role {
+  SUPERADMIN
+  ADMIN
+  ENTRENADOR
+  RECEPCION
+}
+
+// ───────────────────────────────────────────────────────
+//  PLANES DE MEMBRESÍA
+// ───────────────────────────────────────────────────────
+model Plan {
+  id           Int          @id @default(autoincrement())
+  name         String       @unique @db.VarChar(50)  // Mensual, Trimestral, etc.
+  price        Decimal      @db.Decimal(8, 2)
+  durationDays Int                                   // 30, 90, 180, 365
+  description  String?      @db.VarChar(255)
+  active       Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+
+  // Relaciones
+  memberships  Membership[]
+
+  @@map("plans")
+}
+
+// ───────────────────────────────────────────────────────
+//  MIEMBROS DEL GYM (clientes)
+// ───────────────────────────────────────────────────────
+model Member {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  email     String   @unique @db.VarChar(150)
+  phone     String?  @db.VarChar(20)
+  birthDate DateTime? @db.Date
+  status    Status   @default(ACTIVO)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  memberships  Membership[]
+  attendances  Attendance[]
+  bodyMetrics  BodyMetric[]
+  routines     Routine[]
+  nutritionDays NutritionDay[]
+  receipts     Receipt[]
+
+  @@map("members")
+}
+
+// ───────────────────────────────────────────────────────
+//  MEMBRESÍAS (relación miembro ↔ plan)
+// ───────────────────────────────────────────────────────
+model Membership {
+  id        Int              @id @default(autoincrement())
+  memberId  Int
+  planId    Int
+  startDate DateTime         @db.Date
+  endDate   DateTime         @db.Date
+  status    MembershipStatus @default(ACTIVA)
+  createdAt DateTime         @default(now())
+
+  // Relaciones
+  member    Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  plan      Plan   @relation(fields: [planId],   references: [id])
+
+  @@map("memberships")
+}
+
+enum MembershipStatus {
+  ACTIVA
+  VENCIDA
+  CANCELADA
+}
+
+// ───────────────────────────────────────────────────────
+//  ASISTENCIA
+// ───────────────────────────────────────────────────────
+model Attendance {
+  id         Int      @id @default(autoincrement())
+  memberId   Int
+  entryTime  DateTime @default(now())
+  date       DateTime @db.Date
+  verifiedBy String?  @db.VarChar(20)   // "manual" | "qr"
+
+  // Relaciones
+  member     Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@map("attendances")
+}
+
+// ───────────────────────────────────────────────────────
+//  MÉTRICAS CORPORALES (peso, talla, IMC, medidas)
+// ───────────────────────────────────────────────────────
+model BodyMetric {
+  id            Int      @id @default(autoincrement())
+  memberId      Int
+  recordedAt    DateTime @default(now())
+  weightKg      Decimal? @db.Decimal(5, 2)
+  heightCm      Decimal? @db.Decimal(5, 2)
+  imc           Decimal? @db.Decimal(4, 2)   // calculado automáticamente
+  // Medidas en cm
+  neck          Decimal? @db.Decimal(5, 2)
+  shoulders     Decimal? @db.Decimal(5, 2)
+  chest         Decimal? @db.Decimal(5, 2)
+  waist         Decimal? @db.Decimal(5, 2)
+  hips          Decimal? @db.Decimal(5, 2)
+  bicepRight    Decimal? @db.Decimal(5, 2)
+  bicepLeft     Decimal? @db.Decimal(5, 2)
+  forearm       Decimal? @db.Decimal(5, 2)
+  thighRight    Decimal? @db.Decimal(5, 2)
+  thighLeft     Decimal? @db.Decimal(5, 2)
+  calf          Decimal? @db.Decimal(5, 2)
+  notes         String?  @db.VarChar(255)
+
+  // Relaciones
+  member        Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@map("body_metrics")
+}
+
+// ───────────────────────────────────────────────────────
+//  CATÁLOGO DE EJERCICIOS
+// ───────────────────────────────────────────────────────
+model Exercise {
+  id            Int    @id @default(autoincrement())
+  name          String @unique @db.VarChar(150)
+  muscleGroup   String @db.VarChar(50)   // pecho, espalda, biceps, etc.
+  exerciseType  String @db.VarChar(50)   // Fuerza, Aislamiento, Compuesto, etc.
+  description   String? @db.Text
+  active        Boolean @default(true)
+
+  // Relaciones
+  routineItems  RoutineItem[]
+
+  @@map("exercises")
+}
+
+// ───────────────────────────────────────────────────────
+//  RUTINAS (un miembro tiene una rutina por día)
+// ───────────────────────────────────────────────────────
+model Routine {
+  id        Int      @id @default(autoincrement())
+  memberId  Int
+  dayOfWeek DayOfWeek
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  member    Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  items     RoutineItem[]
+
+  @@unique([memberId, dayOfWeek])   // un registro por miembro+día
+  @@map("routines")
+}
+
+model RoutineItem {
+  id         Int     @id @default(autoincrement())
+  routineId  Int
+  exerciseId Int
+  sets       Int     @default(3)
+  reps       Int     @default(12)
+  restSecs   Int     @default(60)
+  orderIndex Int     @default(0)  // orden dentro de la rutina
+
+  // Relaciones
+  routine    Routine  @relation(fields: [routineId],  references: [id], onDelete: Cascade)
+  exercise   Exercise @relation(fields: [exerciseId], references: [id])
+
+  @@map("routine_items")
+}
+
+enum DayOfWeek {
+  LUNES
+  MARTES
+  MIERCOLES
+  JUEVES
+  VIERNES
+  SABADO
+}
+
+// ───────────────────────────────────────────────────────
+//  PLAN DE NUTRICIÓN (comidas por día y tipo)
+// ───────────────────────────────────────────────────────
+model NutritionDay {
+  id        Int      @id @default(autoincrement())
+  memberId  Int
+  dayOfWeek DayOfWeek
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  member    Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  meals     Meal[]
+
+  @@unique([memberId, dayOfWeek])
+  @@map("nutrition_days")
+}
+
+model Meal {
+  id             Int          @id @default(autoincrement())
+  nutritionDayId Int
+  mealType       MealType
+  food           String       @db.VarChar(300)
+  notes          String?      @db.VarChar(300)
+  calories       Int?
+  proteinG       Decimal?     @db.Decimal(6, 2)
+  carbsG         Decimal?     @db.Decimal(6, 2)
+  fatsG          Decimal?     @db.Decimal(6, 2)
+
+  // Relaciones
+  nutritionDay   NutritionDay @relation(fields: [nutritionDayId], references: [id], onDelete: Cascade)
+
+  @@unique([nutritionDayId, mealType])
+  @@map("meals")
+}
+
+enum MealType {
+  DESAYUNO
+  MEDIA_MANANA
+  ALMUERZO
+  MERIENDA
+  CENA
+}
+
+// ───────────────────────────────────────────────────────
+//  BOLETAS DE VENTA
+// ───────────────────────────────────────────────────────
+model Receipt {
+  id            Int           @id @default(autoincrement())
+  number        String        @unique @db.VarChar(20)  // B001-001
+  memberId      Int?
+  clientName    String        @db.VarChar(100)         // por si es cliente externo
+  concept       String        @db.VarChar(200)
+  amount        Decimal       @db.Decimal(8, 2)
+  igv           Decimal       @db.Decimal(8, 2)
+  subtotal      Decimal       @db.Decimal(8, 2)
+  paymentMethod PaymentMethod @default(EFECTIVO)
+  status        ReceiptStatus @default(EMITIDA)
+  notes         String?       @db.VarChar(300)
+  issuedById    Int?
+  issuedAt      DateTime      @default(now())
+
+  // Relaciones
+  member        Member?     @relation(fields: [memberId],   references: [id])
+  issuedBy      SystemUser? @relation(fields: [issuedById], references: [id])
+
+  @@map("receipts")
+}
+
+enum PaymentMethod {
+  EFECTIVO
+  YAPE
+  PLIN
+  TRANSFERENCIA
+  TARJETA_DEBITO
+  TARJETA_CREDITO
+}
+
+enum ReceiptStatus {
+  EMITIDA
+  ANULADA
+}
+
+// ───────────────────────────────────────────────────────
+//  ENUM COMPARTIDO
+// ───────────────────────────────────────────────────────
+enum Status {
+  ACTIVO
+  INACTIVO
+  SUSPENDIDO
+}

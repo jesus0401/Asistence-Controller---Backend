@@ -1,0 +1,27 @@
+{
+  "name": "solgym-backend",
+  "version": "1.0.0",
+  "description": "API REST para sistema de gestión SOLGYM",
+  "main": "src/index.js",
+  "scripts": {
+    "dev":         "nodemon src/index.js",
+    "start":       "node src/index.js",
+    "db:generate": "prisma generate",
+    "db:migrate":  "prisma migrate dev",
+    "db:push":     "prisma db push",
+    "db:studio":   "prisma studio",
+    "db:seed":     "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.10.0",
+    "bcryptjs":       "^2.4.3",
+    "cors":           "^2.8.5",
+    "dotenv":         "^16.4.5",
+    "express":        "^4.18.3",
+    "jsonwebtoken":   "^9.0.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "prisma":  "^5.10.0"
+  }
+}

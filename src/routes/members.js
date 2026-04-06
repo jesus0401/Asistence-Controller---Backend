@@ -1,6 +1,42 @@
 // src/routes/members.js
 const router = require("express").Router();
 const { PrismaClient } = require("@prisma/client");
+
+// RUTAS PÚBLICAS (sin auth) — deben ir ANTES del middleware auth
+router.get("/public/search", async (req, res) => {
+  const { search } = req.query;
+  if (!search || search.trim().length < 2) return res.json([]);
+  try {
+    const members = await prisma.member.findMany({
+      where: { status: "ACTIVO", name: { contains: search } },
+      include: {
+        memberships: {
+          where: { status: "ACTIVA" },
+          include: { plan: true },
+          orderBy: { endDate: "desc" },
+          take: 1,
+        },
+      },
+      take: 10,
+    });
+    const today = new Date();
+    const result = members.map(m => {
+      const membership = m.memberships[0];
+      const daysLeft = membership
+        ? Math.ceil((new Date(membership.endDate) - today) / (1000 * 60 * 60 * 24))
+        : null;
+      return {
+        id: m.id, name: m.name, email: m.email,
+        plan: membership?.plan?.name ?? null,
+        daysLeft,
+      };
+    });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: "Error al buscar" });
+  }
+});
+
 const auth   = require("../middleware/auth");
 
 const prisma = new PrismaClient();
@@ -173,44 +209,6 @@ router.get("/public/search", async (req, res) => {
 
 //Envio de código de verificación para asistencia
 
-// GET /api/members/public/search — búsqueda pública sin JWT
-router.get("/public/search", async (req, res) => {
-  const { search } = req.query;
-  if (!search || search.trim().length < 2) return res.json([]);
-
-  try {
-    const members = await prisma.member.findMany({
-      where: { status: "ACTIVO", name: { contains: search } },
-      include: {
-        memberships: {
-          where: { status: "ACTIVA" },
-          include: { plan: true },
-          orderBy: { endDate: "desc" },
-          take: 1,
-        },
-      },
-      take: 10,
-    });
-
-    const today = new Date();
-    const result = members.map(m => {
-      const membership = m.memberships[0];
-      const daysLeft = membership
-        ? Math.ceil((new Date(membership.endDate) - today) / (1000 * 60 * 60 * 24))
-        : null;
-      return {
-        id: m.id, name: m.name, email: m.email,
-        plan: membership?.plan?.name ?? null,
-        endDate: membership?.endDate ?? null,
-        daysLeft,
-      };
-    });
-
-    res.json(result);
-  } catch (e) {
-    res.status(500).json({ error: "Error al buscar miembros" });
-  }
-});
 
 // POST /api/members/public/send-code — envía código al correo
 router.post("/public/send-code", async (req, res) => {

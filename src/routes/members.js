@@ -65,7 +65,7 @@ router.post("/public/send-code", async (req, res) => {
     });
 
     await sendVerificationCode(email, member.name, code);
-    res.json({ message: "Código enviado al correo" });
+    res.json({ message: "Código enviado", code });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Error al enviar código" });

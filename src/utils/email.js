@@ -1,9 +1,17 @@
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
+const nodemailer = require("nodemailer");
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "santiago.010499@gmail.com",
+    pass: "wzix xswx lzho acij", // no es tu contraseña normal
+  },
+});
 
 async function sendVerificationCode(toEmail, memberName, code) {
-  await resend.emails.send({
-    from: "onboarding@resend.dev",
+  await transporter.sendMail({
+    from: "santiago.010499@gmail.com",
     to: toEmail,
     subject: "🏋️ SOLGYM — Código de verificación",
     html: `

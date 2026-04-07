@@ -5,12 +5,14 @@ const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: "santiago.010499@gmail.com",
-    pass: "wzix xswx lzho acij", // no es tu contraseña normal
+    pass: "wzixxswxlzhoacij",
   },
+  logger: true,
+  debug: true,
 });
 
 async function sendVerificationCode(toEmail, memberName, code) {
-  await transporter.sendMail({
+    try { const info = await transporter.sendMail({
     from: "santiago.010499@gmail.com",
     to: toEmail,
     subject: "🏋️ SOLGYM — Código de verificación",
@@ -35,6 +37,14 @@ async function sendVerificationCode(toEmail, memberName, code) {
       </div>
     `,
   });
+  console.log("✅ Email enviado:", info.response);
+    return info;
+
+  } catch (error) {
+    console.error("❌ ERROR EN EMAIL:");
+    console.error(error);
+    throw error; // <-- IMPORTANTE
+  }
 }
 
 module.exports = { sendVerificationCode };

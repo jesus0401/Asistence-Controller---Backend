@@ -3,7 +3,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function sendVerificationCode(toEmail, memberName, code) {
   await resend.emails.send({
-    from: "Solgym2829@gmail.com",
+    from: "onboarding@resend.dev",
     to: toEmail,
     subject: "🏋️ SOLGYM — Código de verificación",
     html: `

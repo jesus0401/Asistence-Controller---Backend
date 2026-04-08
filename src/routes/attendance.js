@@ -23,13 +23,21 @@ router.get("/", auth, async (req, res) => {
 
 // GET /api/attendance/today — asistencias de hoy
 router.get("/today", auth, async (req, res) => {
+  // Peru = UTC-5: medianoche Peru = 5am UTC
   const now = new Date();
-  const peruOffset = -5 * 60; // UTC-5 en minutos
-  const peruTime = new Date(now.getTime() + (peruOffset - now.getTimezoneOffset()) * 60000);
-  const today = new Date(peruTime.getFullYear(), peruTime.getMonth(), peruTime.getDate());
+  const startOfPeruDay = new Date(now);
+  // Si son menos de las 5am UTC, retroceder un día
+  if (now.getUTCHours() < 5) {
+    startOfPeruDay.setUTCDate(startOfPeruDay.getUTCDate() - 1);
+  }
+  startOfPeruDay.setUTCHours(5, 0, 0, 0); // medianoche Peru
+  const endOfPeruDay = new Date(startOfPeruDay.getTime() + 24 * 60 * 60 * 1000);
+
   try {
     const records = await prisma.attendance.findMany({
-      where: { date: today },
+      where: {
+        entryTime: { gte: startOfPeruDay, lt: endOfPeruDay }
+      },
       include: { member: { select: { id: true, name: true } } },
       orderBy: { entryTime: "desc" },
     });
@@ -60,12 +68,22 @@ router.get("/stats", auth, async (req, res) => {
   try {
     const days = [];
     for (let i = 6; i >= 0; i--) {
-      const now2 = new Date();
-const peruOffset2 = -5 * 60;
-const peruNow = new Date(now2.getTime() + (peruOffset2 - now2.getTimezoneOffset()) * 60000);
-const d = new Date(peruNow.getFullYear(), peruNow.getMonth(), peruNow.getDate() - i);
-      const count = await prisma.attendance.count({ where: { date: d } });
-      days.push({ date: d.toLocaleDateString("es-PE", { weekday: "short" }), count });
+      const now = new Date();
+      const start = new Date(now);
+      if (now.getUTCHours() < 5) {
+        start.setUTCDate(start.getUTCDate() - 1);
+      }
+      start.setUTCHours(5, 0, 0, 0);
+      start.setUTCDate(start.getUTCDate() - i);
+      const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+
+      const count = await prisma.attendance.count({
+        where: { entryTime: { gte: start, lt: end } }
+      });
+      days.push({
+        date: start.toLocaleDateString("es-PE", { weekday: "short", timeZone: "America/Lima" }),
+        count
+      });
     }
     res.json(days);
   } catch { res.status(500).json({ error: "Error al obtener estadísticas" }); }

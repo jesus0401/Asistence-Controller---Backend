@@ -23,7 +23,10 @@ router.get("/", auth, async (req, res) => {
 
 // GET /api/attendance/today — asistencias de hoy
 router.get("/today", auth, async (req, res) => {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const now = new Date();
+  const peruOffset = -5 * 60; // UTC-5 en minutos
+  const peruTime = new Date(now.getTime() + (peruOffset - now.getTimezoneOffset()) * 60000);
+  const today = new Date(peruTime.getFullYear(), peruTime.getMonth(), peruTime.getDate());
   try {
     const records = await prisma.attendance.findMany({
       where: { date: today },
@@ -40,7 +43,10 @@ router.post("/", async (req, res) => {
   const { memberId, verifiedBy = "qr" } = req.body;
   if (!memberId) return res.status(400).json({ error: "memberId requerido" });
   try {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const now = new Date();
+const peruOffset = -5 * 60;
+const peruTime = new Date(now.getTime() + (peruOffset - now.getTimezoneOffset()) * 60000);
+const today = new Date(peruTime.getFullYear(), peruTime.getMonth(), peruTime.getDate());
     const record = await prisma.attendance.create({
       data: { memberId: +memberId, date: today, verifiedBy },
       include: { member: { select: { id: true, name: true } } },
@@ -54,7 +60,10 @@ router.get("/stats", auth, async (req, res) => {
   try {
     const days = [];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
+      const now2 = new Date();
+const peruOffset2 = -5 * 60;
+const peruNow = new Date(now2.getTime() + (peruOffset2 - now2.getTimezoneOffset()) * 60000);
+const d = new Date(peruNow.getFullYear(), peruNow.getMonth(), peruNow.getDate() - i);
       const count = await prisma.attendance.count({ where: { date: d } });
       days.push({ date: d.toLocaleDateString("es-PE", { weekday: "short" }), count });
     }

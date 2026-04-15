@@ -65,7 +65,7 @@ router.post("/public/send-code", async (req, res) => {
     });
 
     await sendVerificationCode(email, member.name, code);
-    res.json({ message: "Código enviado", code });
+    res.json({ message: "Código enviado al correo", code });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Error al enviar código" });
@@ -100,7 +100,7 @@ router.get("/", auth, async (req, res) => {
     const { search, plan } = req.query;
     const members = await prisma.member.findMany({
       where: {
-        ...(search ? { name: { contains: search } } : {}),        
+        ...(search ? { name: { contains: search } } : {}),
       },
       include: {
         memberships: {
@@ -161,7 +161,7 @@ router.get("/:id", auth, async (req, res) => {
   }
 });
 
-// POST /api/members — crear miembro + membresía
+// POST /api/members
 router.post("/", auth, async (req, res) => {
   const { name, email, phone, birthDate, planId, startDate, endDate } = req.body;
   if (!name || !email) return res.status(400).json({ error: "Nombre y correo requeridos" });
@@ -209,12 +209,10 @@ router.post("/:id/membership", auth, async (req, res) => {
   const { planId, startDate, endDate } = req.body;
   const memberId = +req.params.id;
   try {
-    // Cancelar membresía activa anterior
     await prisma.membership.updateMany({
       where: { memberId, status: "ACTIVA" },
       data:  { status: "CANCELADA" },
     });
-    // Crear nueva membresía
     const membership = await prisma.membership.create({
       data: {
         memberId,
@@ -232,12 +230,31 @@ router.post("/:id/membership", auth, async (req, res) => {
   }
 });
 
-// DELETE /api/members/:id
+// DELETE /api/members/:id — desactivar (soft delete)
 router.delete("/:id", auth, async (req, res) => {
   try {
     await prisma.member.update({ where: { id: +req.params.id }, data: { status: "INACTIVO" } });
     res.json({ message: "Miembro desactivado" });
   } catch {
+    res.status(500).json({ error: "Error al desactivar miembro" });
+  }
+});
+
+// DELETE /api/members/:id/permanent — eliminar físicamente
+router.delete("/:id/permanent", auth, async (req, res) => {
+  try {
+    const id = +req.params.id;
+    await prisma.attendance.deleteMany({ where: { memberId: id } });
+    await prisma.membership.deleteMany({ where: { memberId: id } });
+    await prisma.bodyMetric.deleteMany({ where: { memberId: id } });
+    await prisma.routineItem.deleteMany({ where: { routine: { memberId: id } } });
+    await prisma.routine.deleteMany({ where: { memberId: id } });
+    await prisma.meal.deleteMany({ where: { nutritionDay: { memberId: id } } });
+    await prisma.nutritionDay.deleteMany({ where: { memberId: id } });
+    await prisma.member.delete({ where: { id } });
+    res.json({ message: "Miembro eliminado permanentemente" });
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ error: "Error al eliminar miembro" });
   }
 });

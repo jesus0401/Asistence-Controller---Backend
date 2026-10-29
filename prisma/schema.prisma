@@ -28,6 +28,8 @@ model SystemUser {
 
   // Relaciones
   receiptsIssued Receipt[]
+  sales          Sale[]
+  stockMoves     StockMovement[]
 
   @@map("system_users")
 }
@@ -64,21 +66,56 @@ model Member {
   id        Int      @id @default(autoincrement())
   name      String   @db.VarChar(100)
   email     String   @unique @db.VarChar(150)
+  dni       String?  @unique @db.VarChar(12)
   phone     String?  @db.VarChar(20)
   birthDate DateTime? @db.Date
   status    Status   @default(ACTIVO)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Acceso al portal del miembro (null = aún no activó su cuenta)
+  password      String?   @db.VarChar(255)   // bcrypt hash
+  registeredAt  DateTime?
+  lastLoginAt   DateTime?
+  selfRegistered Boolean  @default(false)    // true = se registró solo desde el portal
+
   // Relaciones
   memberships  Membership[]
+  authCodes    MemberAuthCode[]
   attendances  Attendance[]
   bodyMetrics  BodyMetric[]
   routines     Routine[]
   nutritionDays NutritionDay[]
   receipts     Receipt[]
+  sales        Sale[]
 
   @@map("members")
+}
+
+// ───────────────────────────────────────────────────────
+//  CÓDIGOS DE VERIFICACIÓN DEL PORTAL (registro / recuperar contraseña)
+//  memberId es null cuando el correo aún no existe (registro nuevo)
+// ───────────────────────────────────────────────────────
+model MemberAuthCode {
+  id        Int          @id @default(autoincrement())
+  email     String       @db.VarChar(150)
+  memberId  Int?
+  purpose   AuthPurpose
+  codeHash  String       @db.VarChar(255)   // nunca se guarda el código en claro
+  attempts  Int          @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime     @default(now())
+
+  member    Member? @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([email, purpose])
+  @@map("member_auth_codes")
+}
+
+enum AuthPurpose {
+  REGISTER
+  RESET
 }
 
 // ───────────────────────────────────────────────────────
@@ -276,6 +313,7 @@ model Receipt {
   // Relaciones
   member        Member?     @relation(fields: [memberId],   references: [id])
   issuedBy      SystemUser? @relation(fields: [issuedById], references: [id])
+  sale          Sale?
 
   @@map("receipts")
 }
@@ -291,6 +329,102 @@ enum PaymentMethod {
 
 enum ReceiptStatus {
   EMITIDA
+  ANULADA
+}
+
+// ───────────────────────────────────────────────────────
+//  TIENDA — productos, stock y ventas
+// ───────────────────────────────────────────────────────
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(150)
+  barcode     String?  @unique @db.VarChar(50)     // EAN / UPC
+  category    String   @default("General") @db.VarChar(60)
+  brand       String?  @db.VarChar(80)
+  description String?  @db.VarChar(500)
+  price       Decimal  @db.Decimal(8, 2)           // precio de venta
+  cost        Decimal? @db.Decimal(8, 2)           // costo (para margen)
+  stock       Int      @default(0)
+  minStock    Int      @default(5)                 // alerta de stock bajo
+  imageUrl    String?  @db.VarChar(500)            // /uploads/... o URL externa
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  saleItems   SaleItem[]
+  movements   StockMovement[]
+
+  @@index([category])
+  @@map("products")
+}
+
+model StockMovement {
+  id         Int          @id @default(autoincrement())
+  productId  Int
+  type       StockMoveType
+  quantity   Int                                    // + entra, − sale
+  stockAfter Int
+  note       String?      @db.VarChar(255)
+  saleId     Int?
+  userId     Int?
+  createdAt  DateTime     @default(now())
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sale       Sale?       @relation(fields: [saleId],    references: [id])
+  user       SystemUser? @relation(fields: [userId],    references: [id])
+
+  @@index([productId, createdAt])
+  @@map("stock_movements")
+}
+
+enum StockMoveType {
+  ENTRADA     // compra / reposición
+  VENTA
+  AJUSTE      // conteo físico, merma, vencido
+  ANULACION   // devolución por venta anulada
+}
+
+model Sale {
+  id            Int           @id @default(autoincrement())
+  number        String        @unique @db.VarChar(20)     // V-000001
+  memberId      Int?
+  clientName    String        @default("Cliente") @db.VarChar(100)
+  total         Decimal       @db.Decimal(10, 2)
+  paymentMethod PaymentMethod @default(EFECTIVO)
+  status        SaleStatus    @default(COMPLETADA)
+  notes         String?       @db.VarChar(300)
+  receiptId     Int?          @unique
+  soldById      Int?
+  createdAt     DateTime      @default(now())
+  annulledAt    DateTime?
+
+  member        Member?     @relation(fields: [memberId], references: [id])
+  soldBy        SystemUser? @relation(fields: [soldById], references: [id])
+  receipt       Receipt?    @relation(fields: [receiptId], references: [id])
+  items         SaleItem[]
+  movements     StockMovement[]
+
+  @@index([createdAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id          Int     @id @default(autoincrement())
+  saleId      Int
+  productId   Int
+  productName String  @db.VarChar(150)    // copia del nombre al momento de la venta
+  unitPrice   Decimal @db.Decimal(8, 2)
+  quantity    Int
+  subtotal    Decimal @db.Decimal(10, 2)
+
+  sale        Sale    @relation(fields: [saleId],    references: [id], onDelete: Cascade)
+  product     Product @relation(fields: [productId], references: [id])
+
+  @@map("sale_items")
+}
+
+enum SaleStatus {
+  COMPLETADA
   ANULADA
 }
 
